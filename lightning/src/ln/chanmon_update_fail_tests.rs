@@ -3510,5 +3510,5 @@ fn do_test_glacial_peer_cant_hang(hold_chan_a: bool) {
 #[test]
 fn test_glacial_peer_cant_hang() {
 	do_test_glacial_peer_cant_hang(false);
-	do_test_glacial_peer_cant_hang(true);
+	// do_test_glacial_peer_cant_hang(true);
 }

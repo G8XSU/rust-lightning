@@ -754,6 +754,7 @@ fn do_test_balances_on_local_commitment_htlcs(anchors: bool) {
 	let updates = get_htlc_update_msgs!(nodes[0], nodes[1].node.get_our_node_id());
 	nodes[1].node.handle_update_add_htlc(&nodes[0].node.get_our_node_id(), &updates.update_add_htlcs[0]);
 	commitment_signed_dance!(nodes[1], nodes[0], updates.commitment_signed, false);
+	// expect_persist_claim_info(&nodes[0], 1);
 
 	expect_pending_htlcs_forwardable!(nodes[1]);
 	expect_payment_claimable!(nodes[1], payment_hash, payment_secret, 10_000_000);
@@ -766,6 +767,7 @@ fn do_test_balances_on_local_commitment_htlcs(anchors: bool) {
 	let updates = get_htlc_update_msgs!(nodes[0], nodes[1].node.get_our_node_id());
 	nodes[1].node.handle_update_add_htlc(&nodes[0].node.get_our_node_id(), &updates.update_add_htlcs[0]);
 	commitment_signed_dance!(nodes[1], nodes[0], updates.commitment_signed, false);
+	// expect_persist_claim_info(&nodes[0], 1);
 
 	expect_pending_htlcs_forwardable!(nodes[1]);
 	expect_payment_claimable!(nodes[1], payment_hash_2, payment_secret_2, 20_000_000);
@@ -1462,7 +1464,9 @@ fn do_test_revoked_counterparty_htlc_tx_balances(anchors: bool) {
 	assert_eq!(ChannelId::v1_from_funding_outpoint(funding_outpoint), chan_id);
 
 	let payment_preimage = route_payment(&nodes[0], &[&nodes[1]], 3_000_000).0;
+	// expect_persist_claim_info(&nodes[1]);
 	let failed_payment_hash = route_payment(&nodes[1], &[&nodes[0]], 1_000_000).1;
+	// expect_persist_claim_info(&nodes[1]);
 	let revoked_local_txn = get_local_commitment_txn!(nodes[1], chan_id);
 	assert_eq!(revoked_local_txn[0].input.len(), 1);
 	assert_eq!(revoked_local_txn[0].input[0].previous_output.txid, funding_tx.txid());
@@ -1477,6 +1481,7 @@ fn do_test_revoked_counterparty_htlc_tx_balances(anchors: bool) {
 	assert_eq!(revoked_local_txn[0].output.len(), if anchors { 6 } else { 4 });
 
 	claim_payment(&nodes[0], &[&nodes[1]], payment_preimage);
+	// expect_persist_claim_info(&nodes[1]);
 
 	let chan_feerate = get_feerate!(nodes[0], nodes[1], chan_id) as u64;
 	let channel_type_features = get_channel_type_features!(nodes[0], nodes[1], chan_id);
@@ -1768,7 +1773,9 @@ fn do_test_revoked_counterparty_aggregated_claims(anchors: bool) {
 	// revocation-claim transaction.
 
 	let (claimed_payment_preimage, claimed_payment_hash, ..) = route_payment(&nodes[1], &[&nodes[0]], 3_000_000);
+	// expect_persist_claim_info(&nodes[0]);
 	let revoked_payment_hash = route_payment(&nodes[1], &[&nodes[0]], 4_000_000).1;
+	// expect_persist_claim_info(&nodes[0]);
 
 	let htlc_cltv_timeout = nodes[1].best_block_info().1 + TEST_FINAL_CLTV + 1; // Note ChannelManager adds one to CLTV timeouts for safety
 
@@ -1799,6 +1806,7 @@ fn do_test_revoked_counterparty_aggregated_claims(anchors: bool) {
 	let fee_update = get_htlc_update_msgs!(nodes[0], nodes[1].node.get_our_node_id());
 	nodes[1].node.handle_update_fee(&nodes[0].node.get_our_node_id(), &fee_update.update_fee.unwrap());
 	commitment_signed_dance!(nodes[1], nodes[0], fee_update.commitment_signed, false);
+	// expect_persist_claim_info(&nodes[0], 1);
 
 	nodes[0].node.claim_funds(claimed_payment_preimage);
 	expect_payment_claimed!(nodes[0], claimed_payment_hash, 3_000_000);
@@ -2805,6 +2813,8 @@ fn do_test_monitor_claims_with_random_signatures(anchors: bool, confirm_counterp
 	// Open a channel and route a payment. We'll let it timeout to claim it.
 	let (_, _, chan_id, funding_tx) = create_announced_chan_between_nodes_with_value(&nodes, 0, 1, 1_000_000, 0);
 	route_payment(&nodes[0], &[&nodes[1]], 1_000_000);
+	// expect_persist_claim_info(&nodes[0]);
+	// expect_persist_claim_info(&nodes[1]);
 
 	let (closing_node, other_node) = if confirm_counterparty_commitment {
 		(&nodes[1], &nodes[0])

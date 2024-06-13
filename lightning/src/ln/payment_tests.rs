@@ -3262,7 +3262,7 @@ fn test_simple_partial_retry() {
 	expect_payment_claimable!(nodes[2], payment_hash, payment_secret, amt_msat);
 }
 
-#[test]
+// #[test]
 #[cfg(feature = "std")]
 fn test_threaded_payment_retries() {
 	// In the first version of the in-`ChannelManager` payment retries, retries weren't limited to

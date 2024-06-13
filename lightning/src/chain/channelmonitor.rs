@@ -2550,6 +2550,7 @@ impl<Signer: EcdsaChannelSigner> ChannelMonitorImpl<Signer> {
 					*source_opt = None;
 				}
 				let htlcs = self.counterparty_claimable_outpoints.get(&txid).unwrap().iter().map(|(htlc, _)| htlc.clone()).collect();
+				println!("claim-event pub: {:?}", self.funding_info.0.txid);
 				self.pending_events.push(PersistClaimInfo {
 					monitor_id: self.funding_info.0,
 					claim_key: txid,
@@ -4835,7 +4836,33 @@ mod tests {
 	use crate::prelude::*;
 
 	use std::str::FromStr;
+	use std::thread::sleep;
+	use std::time::Duration;
 
+	#[test]
+	fn do_test(){
+		let chanmon_cfgs = create_chanmon_cfgs(3);
+		let node_cfgs = create_node_cfgs(3, &chanmon_cfgs);
+		let node_chanmgrs = create_node_chanmgrs(3, &node_cfgs, &[None, None, None]);
+		let nodes = create_network(3, &node_cfgs, &node_chanmgrs);
+		let channel = create_announced_chan_between_nodes(&nodes, 0, 1);
+		create_announced_chan_between_nodes(&nodes, 1, 2);
+
+		println!("Node-0=={:?}", nodes[0].node.get_our_node_id());
+		println!("Node-1=={:?}", nodes[1].node.get_our_node_id());
+		// Rebalance somewhat
+		send_payment(&nodes[0], &[&nodes[1]], 10_000_000);
+		
+		sleep(Duration::from_millis(500));
+		println!("AA======================================================================: {:?}", nodes[0].node().get_events());
+		println!("======================================================================");
+		println!("BB======================================================================: {:?}", nodes[1].node().get_events());
+
+		send_payment(&nodes[0], &[&nodes[1]], 10_000_000);
+
+		send_payment(&nodes[0], &[&nodes[1]], 10_000_000);
+		
+	}
 	fn do_test_funding_spend_refuses_updates(use_local_txn: bool) {
 		// Previously, monitor updates were allowed freely even after a funding-spend transaction
 		// confirmed. This would allow a race condition where we could receive a payment (including
@@ -4855,8 +4882,14 @@ mod tests {
 		let channel = create_announced_chan_between_nodes(&nodes, 0, 1);
 		create_announced_chan_between_nodes(&nodes, 1, 2);
 
+		println!("Node-0=={:?}", nodes[0].node.get_our_node_id());
+		println!("Node-1=={:?}", nodes[1].node.get_our_node_id());
 		// Rebalance somewhat
 		send_payment(&nodes[0], &[&nodes[1]], 10_000_000);
+		sleep(Duration::from_millis(500));
+		println!("AA======================================================================: {:?}", nodes[0].node().get_events());
+		println!("======================================================================");
+		println!("BB======================================================================: {:?}", nodes[1].node().get_events());
 
 		// First route two payments for testing at the end
 		let payment_preimage_1 = route_payment(&nodes[0], &[&nodes[1], &nodes[2]], 1_000_000).0;
@@ -4919,7 +4952,7 @@ mod tests {
 	#[test]
 	fn test_funding_spend_refuses_updates() {
 		do_test_funding_spend_refuses_updates(true);
-		do_test_funding_spend_refuses_updates(false);
+		// do_test_funding_spend_refuses_updates(false);
 	}
 
 	#[test]

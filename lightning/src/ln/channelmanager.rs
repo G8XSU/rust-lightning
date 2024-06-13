@@ -6304,6 +6304,7 @@ where
 				if let Some(pubkey) = next_channel_counterparty_node_id {
 					debug_assert_eq!(pubkey, path.hops[0].pubkey);
 				}
+
 				let ev_completion_action = EventCompletionAction::ReleaseRAAChannelMonitorUpdate {
 					channel_funding_outpoint: next_channel_outpoint, channel_id: next_channel_id,
 					counterparty_node_id: path.hops[0].pubkey,
@@ -8910,6 +8911,11 @@ where
 		}
 	}
 
+	pub fn get_events(&self) -> Vec<Event> {
+		let pending_events: Vec<_> = self.pending_events.lock().unwrap().clone().iter().map(|(e, _)| e.clone()).collect();
+		return pending_events;
+	}
+
 	/// Processes any events asynchronously in the order they were generated since the last call
 	/// using the given event handler.
 	///
@@ -9013,6 +9019,8 @@ where
 		let mut ev;
 		process_events_body!(self, ev, handler.handle_event(ev));
 	}
+
+
 }
 
 impl<M: Deref, T: Deref, ES: Deref, NS: Deref, SP: Deref, F: Deref, R: Deref, L: Deref> chain::Listen for ChannelManager<M, T, ES, NS, SP, F, R, L>

@@ -1709,7 +1709,8 @@ macro_rules! check_closed_event {
 }
 
 pub fn handle_bump_htlc_event(node: &Node, count: usize) {
-	let events: Vec<_> = node.chain_monitor.chain_monitor.get_and_clear_pending_events().into_iter().filter(|e| !matches!(e, Event::PersistClaimInfo {..})).collect();
+	let events: Vec<_> = node.chain_monitor.chain_monitor.get_and_clear_pending_events();
+	println!("{:?}", events);
 	assert_eq!(events.len(), count);
 	for event in events {
 		match event {
@@ -1719,6 +1720,21 @@ pub fn handle_bump_htlc_event(node: &Node, count: usize) {
 				node.bump_tx_handler.handle_event(&bump_event);
 			},
 			_ => panic!(),
+		}
+	}
+}
+
+pub fn expect_persist_claim_info(node: &Node, count: usize) {
+	let mut events: Vec<_> = node.chain_monitor.chain_monitor.get_and_clear_pending_events();
+	println!("{:?}= ==== = {:?}", node.node.get_our_node_id(), events);
+	assert_eq!(events.len(), count);
+	for event in events {
+		match event {
+			Event::PersistClaimInfo { monitor_id, .. } => {
+				println!("claim-event con: {:?}", monitor_id.txid);
+				// Do Nothing
+			}
+			_ => panic!("Only PersistClaimInfo was expected")
 		}
 	}
 }
@@ -1961,6 +1977,14 @@ pub fn commitment_signed_dance_through_cp_raa(node_a: &Node<'_, '_, '_>, node_b:
 	let (extra_msg_option, bs_revoke_and_ack) = do_main_commitment_signed_dance(node_a, node_b, fail_backwards);
 	node_a.node.handle_revoke_and_ack(&node_b.node.get_our_node_id(), &bs_revoke_and_ack);
 	check_added_monitors(node_a, if includes_claim { 0 } else { 1 });
+	if !includes_claim {
+		expect_persist_claim_info(node_a, 1);
+		expect_persist_claim_info(node_b, 1);
+	} else {
+		expect_persist_claim_info(node_b, 1);
+	}
+	println!("A =events: {:?}", node_a.node.get_events());
+	println!("B =events: {:?}", node_b.node.get_events());
 	extra_msg_option
 }
 
@@ -1988,7 +2012,10 @@ pub fn do_main_commitment_signed_dance(node_a: &Node<'_, '_, '_>, node_b: &Node<
 			_ => panic!("Unexpected event"),
 		}, events.get(0).map(|e| e.clone()))
 	};
+	// expect_persist_claim_info(node_a, 1);
+	// expect_persist_claim_info(node_b, 1);
 	check_added_monitors!(node_b, 1);
+
 	if fail_backwards {
 		assert!(node_a.node.get_and_clear_pending_events().is_empty());
 		assert!(node_a.node.get_and_clear_pending_msg_events().is_empty());
@@ -2186,6 +2213,7 @@ pub fn expect_payment_sent<CM: AChannelManager, H: NodeHolder<CM=CM>>(node: &H,
 	let events = node.node().get_and_clear_pending_events();
 	let expected_payment_hash = PaymentHash(
 		bitcoin::hashes::sha256::Hash::hash(&expected_payment_preimage.0).to_byte_array());
+	println!("events during payment_sent: {:?}", events);
 	if expect_per_path_claims {
 		assert!(events.len() > 1);
 	} else {
@@ -2218,6 +2246,8 @@ pub fn expect_payment_sent<CM: AChannelManager, H: NodeHolder<CM=CM>>(node: &H,
 			}
 		}
 	}
+
+	println!("events after payment_sent: {:?}", node.node().get_events());
 }
 
 #[macro_export]
@@ -2506,7 +2536,16 @@ pub fn send_along_route_with_secret<'a, 'b, 'c>(origin_node: &Node<'a, 'b, 'c>, 
 	origin_node.node.send_payment_with_route(&route, our_payment_hash,
 		RecipientOnionFields::secret_only(our_payment_secret), payment_id).unwrap();
 	check_added_monitors!(origin_node, expected_paths.len());
+
 	pass_along_route(origin_node, expected_paths, recv_value, our_payment_hash, our_payment_secret);
+	// expect_persist_claim_info(&origin_node, expected_paths.len());
+	// for &expected_route in expected_paths {
+	// 	for &node in expected_route[..expected_route.len() - 1].iter() {
+	// 		expect_persist_claim_info(node, 2);
+	// 	}
+	//
+	// }
+	// expect_persist_claim_info(&expected_paths[0][expected_paths[0].len() - 1], expected_paths.len());
 	payment_id
 }
 
@@ -2606,6 +2645,18 @@ pub fn do_pass_along_path<'a, 'b, 'c>(args: PassAlongPathArgs) -> Option<Event> 
 			commitment_signed_dance!(node, prev_node, payment_event.commitment_msg, false);
 			expect_pending_htlcs_forwardable!(node);
 		}
+
+		// println!("nono {:?}, {:?}", prev_node.node.get_our_node_id(), origin_node.node.get_our_node_id());
+		// if prev_node.node.get_our_node_id() == origin_node.node.get_our_node_id() {
+		// 	println!("sss");
+		// 	expect_persist_claim_info(&prev_node, 1);
+		// } else {
+		// 	println!("psss");
+		// 	expect_persist_claim_info(&prev_node, 2);
+		// }
+		// if is_last_hop {
+		// 	expect_persist_claim_info(&node, 1);
+		// }
 
 		if is_last_hop && clear_recipient_events {
 			let events_2 = node.node.get_and_clear_pending_events();
@@ -2961,13 +3012,16 @@ pub fn pass_claimed_payment_along_route(args: ClaimAlongRouteArgs) -> u64 {
 
 	expected_total_fee_msat
 }
+
 pub fn claim_payment_along_route(args: ClaimAlongRouteArgs) {
 	let origin_node = args.origin_node;
 	let payment_preimage = args.payment_preimage;
 	let skip_last = args.skip_last;
+	// let expected_routes = args.expected_paths;
 	let expected_total_fee_msat = do_claim_payment_along_route(args);
 	if !skip_last {
 		expect_payment_sent!(origin_node, payment_preimage, Some(expected_total_fee_msat));
+
 	}
 }
 
@@ -2991,6 +3045,15 @@ pub fn route_payment<'a, 'b, 'c>(origin_node: &Node<'a, 'b, 'c>, expected_route:
 	}
 
 	let res = send_along_route(origin_node, route, expected_route, recv_value);
+	println!("After send_along_path ==================================");
+	println!("AA======================================================================: {:?}", origin_node.node().get_events());
+	println!("======================================================================");
+	println!("BB======================================================================: {:?}", expected_route[0].node().get_events());
+	// expect_persist_claim_info(&origin_node, 1);
+	// for &node in expected_route[..expected_route.len() - 1].iter() {
+	// 	expect_persist_claim_info(node, 2);
+	// }
+	// expect_persist_claim_info(&expected_route[expected_route.len()-1], 1);
 	(res.0, res.1, res.2, res.3)
 }
 
